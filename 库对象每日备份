@@ -1,0 +1,76 @@
+创建dmp目录文件
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/bfcb
+mkdir /orabak/hotbak/gzhotbak/dnsy
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+mkdir /orabak/hotbak/gzhotbak/fjctcms
+
+----------
+数据库dmp文件
+create or replace directory fjctcmsdmp  as '/orabak/hotbak/gzhotbak/fjctcms';
+create or replace directory bfcbdmp  as '/orabak/hotbak/gzhotbak/bfcb';
+create or replace directory dnsydmp  as '/orabak/hotbak/gzhotbak/dnsy';
+create or replace directory glmtdmp  as '/orabak/hotbak/gzhotbak/glmt';
+create or replace directory gwjtdmp  as '/orabak/hotbak/gzhotbak/gwjt';
+create or replace directory lygkdmp  as '/orabak/hotbak/gzhotbak/lygk';
+create or replace directory ptgwdmp  as '/orabak/hotbak/gzhotbak/ptgw';
+create or replace directory testdmp  as '/orabak/hotbak/gzhotbak/test';
+create or replace directory test1dmp  as '/orabak/hotbak/gzhotbak/test1';
+create or replace directory wzsydmp  as '/orabak/hotbak/gzhotbak/wzsy';
+create or replace directory yyjtdmp  as '/orabak/hotbak/gzhotbak/yyjt';
+
+赋权
+/*FJCTCMS*/
+GRANT READ,WRITE ON DIRECTORY fjctcmsdmp TO FJCTCMS;
+/*FJCTCMS_BFCB*/
+GRANT READ,WRITE ON DIRECTORY bfcbdmp TO FJCTCMS_BFCB;
+/*FJCTCMS_DNSY*/
+GRANT READ,WRITE ON DIRECTORY dnsydmp TO FJCTCMS_DNSY;
+/*FJCTCMS_GLMT*/
+GRANT READ,WRITE ON DIRECTORY glmtdmp TO FJCTCMS_GLMT;
+/*FJCTCMS_GWJT*/
+GRANT READ,WRITE ON DIRECTORY gwjtdmp TO FJCTCMS_GWJT;
+/*FJCTCMS_LYGK*/
+GRANT READ,WRITE ON DIRECTORY lygkdmp TO FJCTCMS_LYGK;
+/*FJCTCMS_PTGW*/
+GRANT READ,WRITE ON DIRECTORY ptgwdmp TO FJCTCMS_PTGW;
+/*FJCTCMS_TEST*/
+GRANT READ,WRITE ON DIRECTORY testdmp TO FJCTCMS_TEST;
+/*FJCTCMS_TEST1*/
+GRANT READ,WRITE ON DIRECTORY test1dmp TO FJCTCMS_TEST1;
+/*FJCTCMS_WZSY*/
+GRANT READ,WRITE ON DIRECTORY wzsydmp TO FJCTCMS_WZSY;
+/*FJCTCMS_YYJT*/
+GRANT READ,WRITE ON DIRECTORY yyjtdmp TO FJCTCMS_YYJT;
+备份脚本
+#!/bin/bash
+source /home/.bash_profile
+time=$(date +%Y%m%d_%H%M)
+
+expdp FJCTCMS/fjctcms schemas=FJCTCMS dumpfile=fjctms_$time.dmp DIRECTORY=fjctcmsdmp logfile=impFJCTMS_$time.log
+expdp FJCTCMS_BFCB/fjctcms schemas=FJCTCMS_BFCB dumpfile=bfcb_$time.dmp DIRECTORY=bfcbdmp logfile=impBFCB_$time.log
+expdp FJCTCMS_DNSY/fjctcms schemas=FJCTCMS_DNSY dumpfile=dnsy_$time.dmp DIRECTORY=dnsydmp logfile=impDNSY_$time.log
+expdp FJCTCMS_GLMT/fjctcms schemas=FJCTCMS_GLMT dumpfile=glmt_$time.dmp DIRECTORY=glmtdmp logfile=impGLMT_$time.log
+expdp FJCTCMS_GWJT/fjctcms schemas=FJCTCMS_GWJT dumpfile=gwjt_$time.dmp DIRECTORY=gwjtdmp logfile=impGWJT_$time.log
+expdp FJCTCMS_LYGK/fjctcms schemas=FJCTCMS_LYGK dumpfile=lygk_$time.dmp DIRECTORY=lygkdmp logfile=impLYGK_$time.log
+expdp FJCTCMS_PTGW/fjctcms schemas=FJCTCMS_PTGW dumpfile=ptgw_$time.dmp DIRECTORY=ptgwdmp logfile=impPTGW_$time.log
+expdp FJCTCMS_TEST/fjctcms schemas=FJCTCMS_TEST dumpfile=test_$time.dmp DIRECTORY=testdmp logfile=impTEST_$time.log
+expdp FJCTCMS_TEST1/fjctcms schemas=FJCTCMS_TEST1 dumpfile=test1_$time.dmp DIRECTORY=test1dmp logfile=impTEST1_$time.log
+expdp FJCTCMS_WZSY/fjctcms schemas=FJCTCMS_WZSY dumpfile=wzsy_$time.dmp DIRECTORY=wzsydmp logfile=impWZSY_$time.log
+expdp FJCTCMS_YYJT/fjctcms schemas=FJCTCMS_YYJT dumpfile=yyjt_$time.dmp DIRECTORY=yyjtdmp logfile=impYYJT_$time.log
+
+find /backupset -type f -mtime +3 -exec rm -f {} \;
+find /orabak/hotbak/gzhotbak -type f -mtime +3 -exec rm -f {} \;
+tar zcvf /backupset/backupdmp_$time.tar.gz  /orabak/hotbak/gzhotbak
+
+rsync -vzrtog --progress /backupset/ /orabak/hotbak/gzhotbak/ rsync@172.16.102.107::backupset/172.16.40.1/ --password-file=/etc/rsync.password
+
+crontab -e
+0 2 * * * /orabak/hotbak/bin/backup.sh.sh >> /orabak/hotbak/bin/backup.sh.log 2>&1
+

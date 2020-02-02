@@ -1,0 +1,72 @@
+
+在执行grid脚本root.sh前配置/如已设置crs集群需卸载相关配置
+关于crs无法添加自启方法
+解决方法：
+在RHEL 7中ohasd需要被设置为一个服务，在运行脚本root.sh之前。
+步骤如下：
+1. 以root用户创建服务文件
+#touch /usr/lib/systemd/system/ohas.service
+#chmod 777 /usr/lib/systemd/system/ohas.service
+2. 将以下内容添加到新创建的ohas.service文件中
+[root@rac1 init.d]# cat /usr/lib/systemd/system/ohas.service
+[Unit]
+Description=Oracle High Availability Services
+After=syslog.target
+
+[Service]
+ExecStart=/etc/init.d/init.ohasd run >/dev/null 2>&1 Type=simple
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+3. 以root用户运行下面的命令
+systemctl daemon-reload
+systemctl enable ohas.service
+systemctl start ohas.service
+4. 查看运行状态
+[root@rac1 init.d]# systemctl status ohas.service
+ohas.service - Oracle High Availability Services
+   Loaded: loaded (/usr/lib/systemd/system/ohas.service; enabled)
+   Active: failed (Result: start-limit) since Fri 2015-09-11 16:07:32 CST; 1s ago
+  Process: 5734 ExecStart=/etc/init.d/init.ohasd run >/dev/null 2>&1 Type=simple (code=exited, status=203/EXEC)
+ Main PID: 5734 (code=exited, status=203/EXEC)
+
+Sep 11 16:07:32 rac1 systemd[1]: Starting Oracle High Availability Services...
+Sep 11 16:07:32 rac1 systemd[1]: Started Oracle High Availability Services.
+Sep 11 16:07:32 rac1 systemd[1]: ohas.service: main process exited, code=exited, status=203/EXEC
+Sep 11 16:07:32 rac1 systemd[1]: Unit ohas.service entered failed state.
+Sep 11 16:07:32 rac1 systemd[1]: ohas.service holdoff time over, scheduling restart.
+Sep 11 16:07:32 rac1 systemd[1]: Stopping Oracle High Availability Services...
+Sep 11 16:07:32 rac1 systemd[1]: Starting Oracle High Availability Services...
+Sep 11 16:07:32 rac1 systemd[1]: ohas.service start request repeated too quickly, refusing to start.
+Sep 11 16:07:32 rac1 systemd[1]: Failed to start Oracle High Availability Services.
+Sep 11 16:07:32 rac1 systemd[1]: Unit ohas.service entered failed state.
+
+此时状态为失败，原因是现在还没有/etc/init.d/init.ohasd文件。
+下面可以运行脚本root.sh 不会再报ohasd failed to start错误了。
+如果还是报ohasd failed to start错误，可能是root.sh脚本创建了init.ohasd之后，ohas.service没有马上启动，解决方法参考以下：
+当运行root.sh时，一直刷新/etc/init.d ，直到出现 init.ohasd 文件，马上手动启动ohas.service服务 命令：systemctl start ohas.service 
+
+[root@rac1 init.d]# systemctl status ohas.service
+ohas.service - Oracle High Availability Services
+   Loaded: loaded (/usr/lib/systemd/system/ohas.service; enabled)
+   Active: active (running) since Fri 2015-09-11 16:09:05 CST; 3s ago
+ Main PID: 6000 (init.ohasd)
+   CGroup: /system.slice/ohas.service
+           6000 /bin/sh /etc/init.d/init.ohasd run >/dev/null 2>&1 Type=simple
+           6026 /bin/sleep 10
+
+Sep 11 16:09:05 rac1 systemd[1]: Starting Oracle High Availability Services...
+Sep 11 16:09:05 rac1 systemd[1]: Started Oracle High Availability Services.
+Sep 11 16:09:05 rac1 su[6020]: (to grid) root on none
+————————————————
+执行/u02/app/grid/product/11.2.0/grid/perl/bin/perl -I/u02/app/grid/product/11.2.0/grid/perl/lib -I/u02/app/grid/product/11.2.0/grid/crs/install /u02/app/grid/product/11.2.0/grid/crs/install/roothas.pl脚本时
+如在Adding daemon to inittab界面停顿较久，需在其他终端root运行：
+dd if=/var/tmp/.oracle/npohasd of=/dev/nullbs=1024 count=1
+------------------------卸载crs-----------------------------
+[root@testdb11a ~]# cd /u02/app/grid/product/11.2.0/grid/crs/install    ----Grid用户的ORACLE_HOME目录/crs/install
+[root@testdb11a install]# ./rootcrs.pl -verbose -deconfig -force
+或/u02/app/grid/product/11.2.0/grid/crs/installroothas.pl -deconfig -force-verbose
+
+
+
