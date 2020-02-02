@@ -1,0 +1,1323 @@
+# 单机数据库服务器安装恢复
+
+## 安装规划
+
+### **配置前的准备**
+
+主机IP：
+
+IP ：192.168.40.1
+
+密码：
+
+ROOT：root 
+
+Passwd undead@666 
+
+Oracle :oracle@undead666
+
+Grid:grid@undead666 #集群件 高可用架构 rac one-node  
+
+Oracle frdb passwd:undead666
+ 
+vnc grid undead
+
+HOSTS
+
+172.16.40.1 frdb
+
+ 
+
+版本
+
+Download the following software.
+
+· Oracle_linux 7.7
+
+[Oracle 11g Release 2（稳定版） (11.2.0.4) Software (64 bit)](http://support.oracle.com/)
+
+大版本 11.2 http://support.oracle.com/
+
+#### 目录划分
+
+| Oracle_sid       | frdb          |      |      |
+| ---------------- | ------------- | ---- | ---- |
+| dbname 字符集    | Zsh16gdbk     |      |      |
+| 数据文件存放路径 | /oradata/frdb |      |      |
+| Oracle_base      |               |      |      |
+| Oracle_home      |               |      |      |
+
+ 
+
+| 归档日志路径（ARCH）     | /orabak/arch           |      | 归档       |
+| ------------------------ | ---------------------- | ---- | ---------- |
+| flashback 闪回恢复区路径 | /orabak/flashback_area |      | 闪回恢复区 |
+| 备份导入导出             | /orabak/dump           |      | 导入导出   |
+| 备份文件路径             | /orabak/hotbackup      |      | 定期备份   |
+
+#### Linux内存划分
+
+#### 修改swap分区
+
+
+#### oracle内存划分
+
+swap 32G
+#### 级别划分：
+
+总共5块磁盘Slt00-Slt04，Slt00-Slt01 
+
+2块做为RAID，Slt02-Slt04作为ASM。
+
+Slt00-Slt012块磁盘用作数据库安装，剩下都是ASM磁盘
+
+## 操作系统安装及安装Oracle 前准备
+
+仅安装mini install 简化
+
+### 
+
+##### 修改主机名
+
+```bash
+# vi /etc/hostname 
+
+oradb
+
+# vi /etc/hosts 
+
+192.168.56.201  oradb
+```
+
+##### 升级更新软件包
+
+
+```bash
+yum update
+```
+
+
+##### 安装内核源仓库
+
+```bash
+rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
+yum install https://www.elrepo.org/elrepo-release-7.0-4.el7.elrepo.noarch.rpm 
+```
+
+##### 查看指定的内核
+
+```bash
+yum --enablerepo=elrepo-kernel  list  |grep kernel*
+```
+
+##### 移除旧内核，并安装新内核
+
+```bash
+rpm -qa | grep kernel
+yum remove -y  kernel-devel*
+yum remove -y kernel-tools*
+yum remove -y kernel-header*
+yum --enablerepo=elrepo-kernel install  kernel-ml kernel-ml-devel kernel-ml-headers kernel-ml-tools kernel-ml-tools-libs kernel-m
+```
+
+##### 设置默认启动项
+
+```bash
+grub2-set-default 0
+```
+
+##### 更新grub.cfg
+
+```bash
+grub2-mkconfig -o /boot/grub2/grub.cfg
+```
+
+##### 重新切换到新内核版本
+
+```bash
+reboot#删除旧内核版本
+yum remove -y kernel-3.10.0*#再次查看当前内核版本
+uname -r
+rpm -qa | grep kernel
+```
+
+##### 配置Vncsever
+
+```
+Yum install -y ”X Windows”
+yum install -y tiger* pixman pixman-devel libXfont
+vncserver   #使用对应用户启动vnc，建议先关闭防火墙
+```
+
+
+
+#### 安全基线加固
+
+
+
+#### 关闭防火墙
+
+ 如果防火墙没禁用，那么通过如下方式修改：
+
+```bash
+systemctl stop firewalld
+systemctl disable firewalld
+systemctl status firewalld
+```
+
+ 验证是否关闭SELinux
+
+```bash
+getenforce
+Enforcing
+```
+
+如果SELinux没有被禁止，那就通过如下方式修改：
+
+```
+setenforce 0
+sed -i "s/SELINUX=enforcing/SELINUX=disabled/g" /etc/selinux/config
+```
+
+#### 预安装
+
+```
+ yum install -y oracle-rdbms-server-11gR2-preinstall 
+```
+
+#### 创建用户组
+
+```
+groupadd -g 5000 asmadmin
+groupadd -g 5001 asmdba
+groupadd -g 5002 asmoper
+groupadd -g 6000 oinstall
+groupadd -g 6001 dba
+groupadd -g 6002 oper 
+
+groupmod -g 5000 asmadmin
+groupmod -g 5001 asmdba
+groupmod -g 5002 asmoper
+groupmod -g 6000 oinstall
+groupmod -g 6001 dba
+groupmod -g 6002 oper
+```
+
+
+
+#### 创建用户
+
+```bash
+useradd -u 7000 -g oinstall -G dba,asmadmin,asmdba,asmoper grid  
+useradd -u 7001 -g oinstall -G dba,asmdba,oper,asmadmin oracle
+usermod -u 7000 -g oinstall -G dba,asmadmin,asmdba,asmoper grid  
+usermod -u 7001 -g oinstall -G dba,asmdba,oper,asmadmin oracle
+```
+
+
+
+
+#### 查看用户
+
+```bash
+# id oracle
+
+uid=10000(oracle) 
+gid=10000(oinstall) 
+groups=10000(oinstall),
+       10001(dba),
+       10002(oper),
+	   10004(asmdba),
+	   10006(backupdba),
+	   10007(dgdba),
+	   10008(kmdba),
+	   10009(racdba)
+```
+
+```bash
+#id grid
+
+uid=10001(grid) 
+gid=10000(oinstall) 
+groups=10000(oinstall),
+       10001(dba),
+	   10003(asmadmin),
+       10004(asmdba),
+	   10005(asmoper),
+10009(racdba)
+```
+
+更改oracle grid用户的密码
+
+```bash
+passwd  oracle
+passwd  grid
+```
+
+#### 创建所需要的文件夹
+
+```bash
+su - root
+mkdir -p oracle_base
+mkdir -p oracle_home
+mkdir -p /orabak/
+mkdir -p /orabak/arch
+mkdir -p /orabak/dump
+mkdir -p /orabak/flash_recovery_area
+mkdir -p /orabak/hotbak/archbak1 #当前这周的数据
+mkdir -p /orabak/hotbak/archbak2 #上一周数据
+mkdir -p /orabak/hotbak/bin #备份脚本
+mkdir -p /orabak/hotbak/hotbak1 #当前这周的全部备份
+mkdir -p /orabak/hotbak/hotbak2 #上一周的全部备份
+mkdir -p /orabak/hotbak/log #备份日志
+mkdir -p /orabak/hotbak/gzhotbak #压缩后的数据备份
+```
+
+#### 给文件夹赋予权限
+
+```bash
+mkdir -p /u02/app/grid/product/11.2.0/grid
+chown -R grid:oinstall /u02/
+chmod -R 775 /u02/
+
+mkdir -p /u01/app/oracle/
+mkdir -p /u01/app/oracle/product/11.2.0/db_1
+chown -R oracle:oinstall /u01/
+chmod -R 775 /u01/
+
+
+
+```
+
+#### 配置资源限制模块
+
+```bash
+vi /etc/sysctl.conf #（预安装完成自动创建完成该配置）
+# oracle-rdbms-server-11gR2-preinstall setting for fs.file-max is 6815744
+fs.file-max = 6815744
+
+# oracle-rdbms-server-11gR2-preinstall setting for kernel.sem is '250 32000 100 128'
+kernel.sem = 250 32000 100 128
+
+# oracle-rdbms-server-11gR2-preinstall setting for kernel.shmmni is 4096
+kernel.shmmni = 4096
+
+# oracle-rdbms-server-11gR2-preinstall setting for kernel.shmall is 2097152 on i386
+kernel.shmall = 1073741824
+
+# oracle-rdbms-server-11gR2-preinstall setting for kernel.shmmax is 4294967295 on i386
+kernel.shmmax = 4398046511104
+
+
+# oracle-rdbms-server-11gR2-preinstall setting for kernel.panic_on_oops is 1 per Orabug 19212317
+kernel.panic_on_oops = 1
+
+# oracle-rdbms-server-11gR2-preinstall setting for net.core.rmem_default is 262144
+net.core.rmem_default = 262144
+
+# oracle-rdbms-server-11gR2-preinstall setting for net.core.rmem_max is 4194304
+net.core.rmem_max = 4194304
+
+# oracle-rdbms-server-11gR2-preinstall setting for net.core.wmem_default is 262144
+net.core.wmem_default = 262144
+
+# oracle-rdbms-server-11gR2-preinstall setting for net.core.wmem_max is 1048576
+net.core.wmem_max = 1048576
+
+# oracle-rdbms-server-11gR2-preinstall setting for net.ipv4.conf.all.rp_filter is 2
+net.ipv4.conf.all.rp_filter = 2
+
+# oracle-rdbms-server-11gR2-preinstall setting for net.ipv4.conf.default.rp_filter is 2
+net.ipv4.conf.default.rp_filter = 2
+
+# oracle-rdbms-server-11gR2-preinstall setting for fs.aio-max-nr is 1048576
+fs.aio-max-nr = 1048576
+
+# oracle-rdbms-server-11gR2-preinstall setting for net.ipv4.ip_local_port_range is 9000 65500
+net.ipv4.ip_local_port_range = 9000 65500
+
+
+
+
+```
+#### 配置安全限制模块
+```bash
+Vi /etc/security/limits.d/90-nproc.conf
+
+# Change this 
+
+* soft nproc 1024 
+
+# To this 
+
+* - nproc 16384
+```
+
+
+#### 编辑limit
+
+```bash
+切换到root用户
+
+vi /etc/security/limits.conf
+# oracle-rdbms-server-11gR2-preinstall setting for nofile soft limit is 1024
+oracle   soft   nofile    1024
+
+# oracle-rdbms-server-11gR2-preinstall setting for nofile hard limit is 65536
+oracle   hard   nofile    65536
+
+# oracle-rdbms-server-11gR2-preinstall setting for nproc soft limit is 16384
+# refer orabug15971421 for more info.
+oracle   soft   nproc    16384
+
+# oracle-rdbms-server-11gR2-preinstall setting for nproc hard limit is 16384
+oracle   hard   nproc    16384
+
+# oracle-rdbms-server-11gR2-preinstall setting for stack soft limit is 10240KB
+oracle   soft   stack    10240
+
+# oracle-rdbms-server-11gR2-preinstall setting for stack hard limit is 32768KB
+oracle   hard   stack    32768
+
+oracle   hard   memlock    134217728
+
+# oracle-rdbms-server-11gR2-preinstall setting for memlock hard limit is maximum of 128GB on x86_64 or 3GB on x86 OR 90 % of RAM
+oracle   soft   memlock    134217728
+grid hard nofile 65536
+
+
+grid               soft    nproc     2047
+grid               hard    nproc    65536
+grid               soft    nofile    1024
+grid               hard    nofile   65536
+grid               soft    stack    unlimited
+grid               hard    stack    unlimited
+grid               soft    core     unlimited
+grid               hard    core     unlimited
+#at least 90 percent of the current RAM when HugePages memory is enabled and 
+#at least 3145728 KB (3 GB) when HugePages memory is disabled
+grid               soft    memlock  unlimited
+grid               hard    memlock  unlimited
+
+
+
+
+
+#### 配置grid用户环境变量
+
+```bash
+# vi /home/grid/.bash_profile
+
+PS1="[`whoami`@`hostname`:"'$PWD]$'
+umask 022
+export NLS_DATE_FORMAT='yyyy-mm-dd hh24:mi:ss'
+export TNS_ADMIN=$ORACLE_HOME/network/admin
+export TEMP=/tmp
+export TMP=/tmp
+export TMPDIR=/tmp
+export ORACLE_BASE=/u02/app/grid
+export ORACLE_HOME=$ORACLE_BASE/product/11.2.0/grid
+
+export ORACLE_HOSTNAME=frdb
+export ORACLE_UNQNAME=frdb
+export NLS_LANG="SIMPLIFIED CHINESE_CHINA.ZHS16GBK"
+export PATH=$ORACLE_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+export CLASSPATH=$ORACLE_HOME/JRE:$ORACLE_HOME/jlib:$ORACLE_HOME/rdbms/jlib
+#export CLASSPATH=/usr/local/jdk1.8.0_212/jre:/usr/local/jdk1.8.0_212/lib
+export ORACLE_SID=+ASM
+```
+在grid用户底下执行
+source /home/grid/.bash_profile
+
+#### 配置oracle用户环境变量
+
+```bash
+su - oracle
+vi .bash_profile
+#在末尾加入下面的内容（标蓝部分根据实际情况修改）
+export ORACLE_HOSTNAME=frdb
+export ORACLE_UNQNAME=frdb
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=$ORACLE_BASE/product/11.2.0/db_1
+export ORACLE_SID=frdb
+export NLS_LANG="SIMPLIFIED CHINESE_CHINA.ZHS16GBK"
+export PATH=/usr/sbin:$PATH
+export PATH=$ORACLE_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+export CLASSPATH=$ORACLE_HOME/JRE:$ORACLE_HOME/jlib:$ORACLE_HOME/rdbms/jlib
+
+```
+在oracle用户底下执行source .bash_profile
+
+
+
+#### 授权解压
+
+把安装包用oracle用户传至/stage/ 并解压，赋于刚解压出来的文件夹权限
+
+```bash
+#chown -R oracle:oinstall /stage/database
+
+#chown -R grid:oinstall /stage/grid
+
+#chmod 755 -R /stage/database
+
+#chmod 755 -R /stage/grid
+```
+
+## 设置UDEV
+
+（唯一的设备名）
+
+### UDEV 绑定硬盘
+
+# /usr/lib/udev/scsi_id -g -u /dev/sdb 
+1ATA_VBOX_HARDDISK_VBc15c17be-e6e41f2d
+
+
+
+```bash
+ lsscsi -i 
+ 
+ i=`lsscsi | grep updisk | awk '{print $6}' | awk -F '/' '{print $3}' | xargs`for j in $idotemp=`/usr/lib/udev/scsi_id -g -u /dev/"$j"`echo "KERNEL==\"sd*\", BUS==\"scsi\", PROGRAM==\"/usr/lib/udev/scsi_id  -g -u /dev/%k\", RESULT==\"$temp\", NAME=\"huawei/$j\", OWNER=\"grid\", GROUP=\"asmadmin\", MODE=\"0660\""done
+ 
+ 
+ 
+lsscsi -i |grep sda
+[0:0:0:0]    disk    PM8060-  RAID1            V1.0  /dev/sda   29b77ee3200d00000
+
+# /usr/lib/udev/scsi_id -g -u /dev/sdb 
+udevadm info -a -p /sys/block/sdb |more 
+udevadm info -a -p /sys/block/sdc |more 
+udevadm info -a -p /sys/block/sdd |more 
+
+```
+
+#### 创建 asmasmdevices 规则文件
+
+```bash
+
+# vi /etc/udev/rules.d/99-oracle-asmdevices.rules
+KERNEL=="sd*", SUBSYSTEM=="block", PROGRAM=="/usr/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/$name", RESULT=="29b879e3300d00000", SYMLINK+="asm1", OWNER="grid", GROUP="asmadmin", MODE="0660"
+KERNEL=="sd*", SUBSYSTEM=="block", PROGRAM=="/usr/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/$name", RESULT=="29b87fe3400d00000", SYMLINK+="asm2", OWNER="grid", GROUP="asmadmin", MODE="0660"
+KERNEL=="sd*", SUBSYSTEM=="block", PROGRAM=="/usr/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/$name", RESULT=="29b87323600d00000", SYMLINK+="asm3", OWNER="grid", GROUP="asmadmin", MODE="0660"
+
+
+
+```
+
+#### 重新加载分区
+
+```bash
+# /usr/sbin/partprobe /dev/sd* 
+ systemctl restart systemd-udevd.service
+
+#partprobe：
+#将磁盘分区表变化信息通知内核，请求操作系统重新加载分区表。
+ -d 不更新内核
+ -s 显示磁盘分区汇总信息
+ -h 显示帮助信息
+ -v 显示版本信息
+```
+
+#### 加载udev 配置文件
+
+```bash
+# /usr/sbin/partprobe /dev/sdb
+
+# udevadm control --reload-rules
+
+# systemctl status systemd-udevd.service
+
+# systemctl enable systemd-udevd.service
+
+# udevadm test /sys/block/sda
+
+# udevadm info --query=all --path=/sys/block/sda
+
+# udevadm info --query=all --name=sda
+
+ 
+
+udevadm test /sys/block/sd* #测试
+
+#systemctl status systemd-udevd.service #状态
+
+#systemctl enable systemd-udevd.service #开机
+```
+
+ 
+
+#### 重启系统
+
+```bash
+reboot
+```
+
+
+
+#### 查看是否成功
+
+```bash
+[root@fqctdg2 ~]# ll /dev/asm*
+
+lrwxrwxrwx 1 root root 4 Nov 24 14:41 /dev/asm-disk1 -> sda
+
+lrwxrwxrwx 1 root root 4 Nov 24 14:41 /dev/asm-disk2 -> sdb
+```
+
+#### 检查udev绑定情况
+
+```bash
+# ls -l /dev/asm* /dev/sdb
+
+lrwxrwxrwx 1 root root     3 Nov 29 18:17 /dev/asm-diskb -> sdb
+
+brw-rw---- 1 grid asmadmin 8, 16 Nov 29
+
+ls -l  /dev/sd*
+```
+
+### UDEV的配置方法
+
+#### 方法一
+
+##### 挂载磁盘没用多路径使用此命令
+
+```bash
+for i in a b c; #根据磁盘名字按顺序执行，若没有匹配到相应的磁盘则输出空值
+
+do
+
+echo "KERNEL=="sd*", BUS=="scsi", PROGRAM=="/usr/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/$name", RESULT=="`/usr/lib/udev/scsi_id --whitelisted --replace-whitespace --device=/dev/sd$i`", SYMLINK="asm-disk$i", OWNER="grid", GROUP="asmadmin", MODE="0660""
+
+done
+```
+
+##### 获取RESULT
+
+```bash
+/usr/lib/udev/scsi_id -g -u /dev/sdb
+
+1ATA_VBOX_HARDDISK_VBc15c17be-e6e41f2d
+```
+
+##### 一个磁盘分割出去，因设备号一样，示例：用sda，sdb区分
+
+```bash
+[root@fzpudg u01]# scsi_id -g -u -d /dev/sda
+
+36000c292f6600983708a7e6cd05c250d
+
+[root@fzpudg u01]# scsi_id -g -u -d /dev/sdb
+
+36000c292f6600983708a7e6cd05c250d
+```
+
+#### 方法二
+
+```bash
+vi /etc/udev/rules.d/99-oracle-asmdevices.rules
+
+KERNEL=="sda",BUS=="scsi",PROGRAM=="/sbin/scsi_id -g -u -d /dev/$parent" RESULT=="36000c292f6600983708a7e6cd05c250d",SYMLINK="asm-disk1", OWNER="grid", GROUP="asmadmin", MODE="0660"
+
+KERNEL=="sdb",BUS=="scsi",PROGRAM=="/sbin/scsi_id -g -u -d /dev/$parent" RESULT=="36000c292f6600983708a7e6cd05c250d",SYMLINK="asm-disk2", OWNER="grid", GROUP="asmadmin", MODE="0660
+
+KERNEL=="sdd", SUBSYSTEMS=="scsi",ATTRS{model}=="ASM3      ", SYMLINK+="asm-disk3", OWNER="grid", GROUP="asmadmin", MODE="0660"
+
+KERNEL=="sda" #匹配到制定的磁盘sda
+
+BUS=="scsi" #模式为scsi
+
+PROGRAM=="/sbin/scsi_id -g -u -d /dev/$parent" #根据此命令执行查找结果
+
+RESULT=="36000c292f6600983708a7e6cd05c250d" #返回的结果
+
+SYMLINK+="asm-disk1" #把sdb名字命名为asm-disk2
+
+OWNER="grid" #给grid用户使用
+
+GROUP="asmadmin" #分到asmadmin组
+
+MODE="0660" #授予权限0660
+```
+
+##### 使用udevadm info –n查看盘块的基本信息，可以用里面的参数区分盘块之间的区别
+
+```bash
+udevadm info -n /dev/sda5 –a
+```
+
+
+
+##### 下面UDEV就是通过对比sda5和sda6中{partition}参数不同来区别盘块
+
+```bash
+KERNEL=="sda5",SUBSYSTEM=="block",SYSFS{partition}=="5",SYMLINK+="asm-disk1",OWNER="grid",GROUP="asmadmin",MODE="0660"
+
+KERNEL=="sda6",SUBSYSTEM=="block",SYSFS{partition}=="6",SYMLINK+="asm-disk2",OWNER="grid",GROUP="asmadmin",MODE="0660"
+```
+
+## GRID,DATABASE安装
+
+###用TIGERVNC连接GRID用户安装GRID软件
+### 在安装GRID之前需要在GRID执行一下命令，路径植入指定位置
+cd /stage/grid
+
+unzip p13390677_112040_Linux-x86-64_3of7.zip
+
+su - grid
+
+./runInstaller -jreLoc /usr/local/jdk1.7.0_80/
+
+
+
+
+ 安装到后面按提示运行下面命令
+
+```bash
+/u01/app/oraInventory/orainstRoot.sh
+
+/u01/app/11.2.0/grid/root.sh
+
+/u01/app/11.2.0/grid/perl/bin/perl -I/u01/app/11.2.0/grid/perl/lib -I/u01/app/11.2.0/grid/crs/install /u01/app/11.2.0/grid/crs/install/roothas.pl
+```
+
+```bash
+[root@fictdb /]# /u01/app/oraInventory/orainstRoot.sh 
+
+Changing permissions of /u01/app/oraInventory.
+
+Adding read,write permissions for group.
+
+Removing read,write,execute permissions for world.
+
+ 
+
+Changing groupname of /u01/app/oraInventory to oinstall.
+
+The execution of the script is complete.
+
+[root@fictdb /]# /u01/app/11.2.0/grid/root.sh 
+
+Performing root user operation for Oracle 11g 
+
+ 
+
+The following environment variables are set as:
+
+  ORACLE_OWNER= grid
+
+  ORACLE_HOME= /u01/app/11.2.0/grid
+
+ 
+
+Enter the full pathname of the local bin directory: [/usr/local/bin]: 
+
+  Copying dbhome to /usr/local/bin ...
+
+  Copying oraenv to /usr/local/bin ...
+
+  Copying coraenv to /usr/local/bin ...
+
+ 
+
+ 
+
+Creating /etc/oratab file...
+
+Entries will be added to the /etc/oratab file as needed by
+
+Database Configuration Assistant when a database is created
+
+Finished running generic part of root script.
+
+Now product-specific root actions will be performed.
+
+ 
+
+To configure Grid Infrastructure for a Stand-Alone Server run the following command as the root user:
+
+
+#GRID安装完成后需要输入以下命令作为集群键
+To configure Grid Infrastructure for a Stand-Alone Server run the following command as the root user:
+/u02/app/grid/product/11.2.0/grid/perl/bin/perl -I/u02/app/grid/product/11.2.0/grid/perl/lib -I/u02/app/grid/product/11.2.0/grid/crs/install /u02/app/grid/product/11.2.0/grid/crs/install/roothas.pl
+##
+ [root@oradb stage]# /u02/app/grid/product/11.2.0/grid/perl/bin/perl -I/u02/app/grid/product/11.2.0/grid/perl/lib -I/u02/app/grid/product/11.2.0/grid/crs/install /u02/app/grid/product/11.2.0/grid/crs/install/roothas.pl
+ 
+ ##开启另一个终端
+ dd if=/var/tmp/.oracle/npohasd of=/dev/nullbs=1024 count=1
+ 
+2020-01-13 09:15:34: Checking for super user privileges
+2020-01-13 09:15:34: User has super user privileges
+2020-01-13 09:15:34: Parsing the host name
+Using configuration parameter file: /u02/app/grid/product/11.2.0/grid/crs/install/crsconfig_params
+Creating trace directory
+LOCAL ADD MODE
+Creating OCR keys for user 'grid', privgrp 'oinstall'..
+Operation successful.
+CRS-4664: Node oradb successfully pinned.
+Adding daemon to inittab
+CRS-4123: Oracle High Availability Services has been started.
+ohasd is starting
+ADVM/ACFS is not supported on oraclelinux-release-7.7-1.0.5.el7.x86_64
+
+
+#查看状态
+[grid@fictdb ~]$ crsctl status res -t 
+NAME      TARGET STATE    SERVER          STATE_DETAILS    
+
+
+Local Resources
+
+
+
+ora.ons
+
+OFFLINE OFFLINE   fictdb                    
+
+
+
+Cluster Resources
+
+
+
+ora.cssd
+
+   1    OFFLINE OFFLINE                         
+
+ora.diskmon
+
+   1    OFFLINE OFFLINE                         
+
+ora.evmd
+
+   1    ONLINE INTERMEDIATE fictdb  
+
+ 
+[root@fictdb update]# cd /u02/app/grid/
+
+cfgtoollogs/ checkpoints/ Clusterware/ fictdb/   
+
+[root@fictdb update]# su - grid
+
+[grid@fictdb ~]$ crsctl check has
+
+CRS-4638: Oracle High Availability Services is online
+
+[grid@fictdb ~]$ crsctl check css
+
+CRS-4530: Communications failure contacting Cluster Synchronization Services daemon
+
+[grid@fictdb ~]$ crsctl check evm
+CRS-4533: Event Manager is online
+[grid@fictdb ~]$ ocrcheck
+Status of Oracle Cluster Registry is as follows :
+Version         :     3
+Total space (kbytes)   :   262120
+Used space (kbytes)   :    152
+Available space (kbytes) :   261968
+ID            : 1797278821
+Device/File Name     : /u02/app/11.2.0/grid/cdata/localhost/local.ocr
+Device/File integrity check succeeded
+Device/File not configured
+Device/File not configured
+Device/File not configured
+Device/File not configured
+
+Cluster registry integrity check succeeded
+Logical corruption check bypassed due to non-privileged user
+```
+
+## ASMCA安装及监听的启动
+
+注:如果没认到盘，用DD命令进行填充删除原数据：
+
+###需要在grid用户下执行以下命令以便
+ln -s /usr/local/jdk1.8.0_212/bin/java /usr/bin/java
+asmca -jreLoc /usr/local/jdk1.8.0 
+
+su - grid
+cd /u02/app/grid/product/11.2.0/grid/dbs
+vi init+ASM.ora
+    INSTANCE_TYPE=ASM
+    DB_UNIQUE_NAME=+ASM
+    ASM_POWER_LIMIT=1
+    ASM_DISKSTRING=/dev/asm*
+    ASM_DISKGROUPS=datagroup
+    LARGE_POOL_SIZE=16M
+
+ASM的实例
+-- 启动到nomount
+授予权限
+conn /as sysasm
+SQL> startup nomount pfile='/u02/app/grid/product/11.2.0/grid/dbs/init+ASM.ora'
+
+
+
+```bash
+dd if=/dev/zero of=/dev/sdc
+```
+
+在grid下运行asmca安装：密码设置为db_undead666,4个都一样
+
+
+
+
+ 
+
+切换到grid，运行asmcmd创建文件
+
+注：和要替换的那台数据库创建同样的文件夹
+
+ 
+
+```bash
+[grid@fictdb ~]$ asmcmd
+
+ASMCMD> ls
+
+DATADG/
+
+FRADG/
+
+ASMCMD> cd datadg
+
+ASMCMD> mkdir FICTRON ----- 
+
+ASMCMD> cd fictron
+
+ASMCMD> mkdir CONTROLFILE DATAFILE ONLINELOG PARAMETERFILE TEMPFILE
+
+ASMCMD> ls
+
+CONTROLFILE/
+
+DATAFILE/
+
+ONLINELOG/
+
+PARAMETERFILE/
+
+TEMPFILE/
+
+ASMCMD> cd .. 
+
+ASMCMD> cd ..
+
+ASMCMD> cd ..
+
+ASMCMD> ls
+
+DATADG/
+
+FRADG/
+
+ASMCMD> cd fradg
+
+ASMCMD> mkdir FICTRON
+
+ASMCMD> cd fictron
+
+ASMCMD> mkdir ARCHIVELOG CONTROLFILE FLASHBACK ONLINELOG
+
+ASMCMD> ls
+
+ARCHIVELOG/
+
+CONTROLFILE/
+
+FLASHBACK/
+
+ONLINELOG/
+
+ASMCMD>
+```
+
+
+打开配置终端netca配置监听,一直点下一步下一步.
+
+注意/etc/hosts下的主机名和/u01/app/oracle/product/11.2.0/db_1/network/admin/listener.ora下的hostname要一致,
+
+最后用lsnect start 启动监听. 用lsnrctl status可以查看状态
+
+ 
+### 安装DATABASE
+### 在oracle用户下，执行一下命令
+cd /stage/
+unzip p13390677_112040_Linux-x86-64_1of7.zip
+unzip p13390677_112040_Linux-x86-64_2of7.zip
+
+su - oracle
+cd /stage/database
+./runInstaller -jreLoc /usr/lib/jvm/jre-1.8.0
+
+Linux7安装Oracle 11g 86%报错：Error in invoking target 'agent nmhs' of makefile
+
+解决方案
+
+建议修改前备份原始文件
+[oracle@ysserver ~]$ cd $ORACLE_HOME/sysman/lib
+[oracle@ysserver lib]$ cp ins_emagent.mk ins_emagent.mk.bak
+[oracle@ysserver lib]$ vi ins_emagent.mk
+
+在makefile中添加链接libnnz11库的参数
+修改$ORACLE_HOME/sysman/lib/ins_emagent.mk，将
+$(MK_EMAGENT_NMECTL)修改为：$(MK_EMAGENT_NMECTL) -lnnz11
+
+进入vi编辑器后  命令模式输入/NMECTL 进行查找，快速定位要修改的行
+在后面追加参数-lnnz11        第一个是字母l   后面两个是数字1
+#### 按提示运行
+
+```bash
+/u01/app/oracle/product/11.2.0/db_1/root.sh
+
+ 
+
+[root@fictdb update]# /u01/app/oracle/product/11.2.0/db_1/root.sh 
+
+Performing root user operation for Oracle 11g 
+
+ 
+
+The following environment variables are set as:
+
+  ORACLE_OWNER= oracle
+
+  ORACLE_HOME= /u01/app/oracle/product/11.2.0/db_1
+
+ 
+
+Enter the full pathname of the local bin directory: [/usr/local/bin]: 
+
+The contents of "dbhome" have not changed. No need to overwrite.
+
+The contents of "oraenv" have not changed. No need to overwrite.
+
+The contents of "coraenv" have not changed. No need to overwrite.
+
+ 
+
+Entries will be added to the /etc/oratab file as needed by
+
+Database Configuration Assistant when a database is created
+
+Finished running generic part of root script.
+
+Now product-specific root actions will be performed.
+
+Finished product-specific root actions.
+```
+
+
+##数据库脚本导入导出
+第一步：在服务器上创建真实的目录；
+（注意：第三步创建逻辑目录的命令不会在OS上创建真正的目录，所以要先在服务器上创建真实的目录）
+（1）创建逻辑目录：
+第二步：用sys管理员登录sqlplus；
+
+oracle@ypdbtest:/home/oracle/dmp/vechcore>sqlplus
+SQL>
+第三步：创建逻辑目录；
+SQL> create public;
+SQL> create directory dumpdir as 'F:\dump';
+SQL> create directory data_dir as '/orabak/dump';
+
+Directory created.
+
+
+
+第四步：查看管理员目录，检查是否存在；
+
+SQL> select * from dba_directories;
+
+OWNER                          DIRECTORY_NAME
+------------------------------ ------------------------------
+DIRECTORY_PATH
+--------------------------------------------------------------------------------
+SYS                            DATA_DIR
+/home/oracle/dmp/user
+
+第五步：用sys管理员给你的指定用户赋予在该目录的操作权限。
+
+SQL> grant read,write on directory data_dir to user;
+
+Grant succeeded.
+（2）用expdp导出dmp
+ 按用户导出；
+在0.11上导出数据文件 
+在磁盘F里面的dmp文件
+
+expdp FJCTCMS_TEST1/fjctcms schemas=FJCTCMS_TEST1 dumpfile=FJCTCMS_TEST120100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_TEST.DMP
+
+expdp FJCTCMS/fjctcms schemas=FJCTCMS dumpfile=FJCTCMS.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS.DMP
+
+expdp FJCTCMS_TEST/fjctcms schemas=FJCTCMS_TEST dumpfile=FJCTCMS_TEST20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_TEST20100115.DMP
+
+expdp FJCTCMS_GWJT/fjctcms schemas=FJCTCMS_GWJT dumpfile=FJCTCMS_GWJT20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_GWJT20100115.dmp
+
+expdp FJCTCMS_WZSY/fjctcms schemas=FJCTCMS_WZSY dumpfile=FJCTCMS_WZSY20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_WZSY20100115.dmp
+
+expdp FJCTCMS_DNSY/fjctcms schemas=FJCTCMS_DNSY dumpfile=FJCTCMS_DNSY20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_DNSY20100115.dmp
+
+expdp FJCTCMS_GLMT/fjctcms schemas=FJCTCMS_GLMT dumpfile=FJCTCMS_GLMT20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_GLMT20100115.dmp
+
+expdp FJCTCMS_BFCB/fjctcms schemas=FJCTCMS_BFCB dumpfile=FJCTCMS_BFCB20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_BFCB20100115.dmp
+
+expdp FJCTCMS_PTGW/fjctcms schemas=FJCTCMS_PTGW dumpfile=FJCTCMS_PTGW20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_PTGW20100115.dmp
+
+expdp FJCTCMS_LYGK/fjctcms schemas=FJCTCMS_LYGK dumpfile=FJCTCMS_LYGK20100115.dmp DIRECTORY=dir
+导出文件：F\DMP\FJCTCMS_LYGK20100115.dmp
+
+将导出的文件进行压缩，压缩包命名为dmp.zip
+在172.16.40.1 服务器上把压缩包上传至/dir底下
+对rar压缩包进行赋予权限
+unzip dmp.zip
+chown -R oracle:oinstall /dir
+chmod 755 -R /dir
+
+
+三、impdp导入步骤
+
+导入表空间；
+su - oracle
+password:undead@666
+
+
+CREATE TABLESPACE FJCTCMS_BFCB_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_DNSY_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_GLMT_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_GWJT_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_PTGW_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_TEST_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_TEST1_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_TEST_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_YYJT_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_TEST1_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+CREATE TABLESPACE FJCTCMS_WZSY_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+
+
+CREATE TABLESPACE FJCTCMS_LYGK_DATA DATAFILE 
+  '+DATAGROUP' SIZE 2G AUTOEXTEND ON NEXT 10M MAXSIZE 4G
+LOGGING
+ONLINE
+EXTENT MANAGEMENT LOCAL AUTOALLOCATE
+BLOCKSIZE 8K
+SEGMENT SPACE MANAGEMENT AUTO
+FLASHBACK ON;
+
+#删除之前创建的用户
+DROP USER FJCTCMS_DNSY CASCADE;
+DROP USER FJCTCMS_TEST1 CASCADE;
+DROP USER FJCTCMS CASCADE; 
+DROP USER FJCTCMS_TEST CASCADE;  
+DROP USER FJCTCMS_GWJT CASCADE; 
+DROP USER FJCTCMS_WZSY CASCADE; 
+DROP USER FJCTCMS_YYJT CASCADE; 
+DROP USER FJCTCMS_GLMT CASCADE; 
+DROP USER FJCTCMS_PTGW CASCADE; 
+DROP USER FJCTCMS_LYGK CASCADE; 
+
+#创建用户
+CREATE USER FJCTCMS_DNSY IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_DNSY_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY; 
+
+CREATE USER FJCTCMS_TEST1 IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_TEST1_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+
+CREATE USER FJCTCMS_GWJT IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_GWJT_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+
+
+CREATE USER FJCTCMS_TEST IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_TEST_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+
+CREATE USER FJCTCMS_WZSY IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_WZSY_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+
+
+
+CREATE USER FJCTCMS_YYJT IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_YYJT_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+
+
+CREATE USER FJCTCMS_GLMT IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_GLMT_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+CREATE USER FJCTCMS_PTGW IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_PTGW_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+CREATE USER FJCTCMS_LYGK IDENTIFIED BY fjctcms DEFAULT TABLESPACE FJCTCMS_LYGK_DATA ACCOUNT UNLOCK;
+GRANT CONNECT,RESOURCE TO FJCTCMS_DNSY; 
+GRANT exp_full_database TO FJCTCMS_DNSY;
+
+在40.1上导入数据
+su - oracle
+password：undead@666
+cd /orabak/dump/
+cp * /u01/app/oracle/admin/frdb/dpdump/
+
+sqlplus /nolog
+conn / as sysdba
+SQL> drop directory dump;
+SQL> create directory dp as 'dp';
+SQL> grant read, write on directory dp to FJCTCMS_TEST;
+
+Grant succeeded.
+
+SQL> select * from dba_directories;
+
+OWNER                          DIRECTORY_NAME
+------------------------------ ------------------------------
+DIRECTORY_PATH
+--------------------------------------------------------------------------------
+SYS                            ORACLE_OCM_CONFIG_DIR2
+/u01/app/oracle/product/11.2.0/db_1/ccr/state
+
+SYS                            DATA_PUMP_DIR
+/u01/app/oracle/admin/frdb/dpdump/
+
+SYS                            ORACLE_OCM_CONFIG_DIR
+/u01/app/oracle/product/11.2.0/db_1/ccr/hosts/frdb/state
+
+
+OWNER                          DIRECTORY_NAME
+------------------------------ ------------------------------
+DIRECTORY_PATH
+--------------------------------------------------------------------------------
+SYS                            DP
+
+##模板
+impdp user/password directory=dmp dumpfile=dnsy.dmp schemas=FJCTCMS_TEST1 REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_TEST1_DATA 
+
+impdp FJCTCMS_DNSY/fjctcms directory=dmp dumpfile=dnsy.dmp schemas=FJCTCMS_DNSY REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_DNSY_DATA
+
+impdp FJCTCMS_LYGK/fjctcms directory=dmp dumpfile=lygk.dmp schemas=FJCTCMS_LYGK REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_LYGK_DATA 
+
+impdp FJCTCMS_PTGW/fjctcms directory=dmp dumpfile=ptgw.dmp schemas=FJCTCMS_PTGW REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_PTGW_DATA 
+
+impdp FJCTCMS_BFCB/fjctcms directory=dmp dumpfile=bfcb.dmp schemas=FJCTCMS_BFCB REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_BFCB_DATA 
+
+impdp FJCTCMS_GLMT/fjctcms directory=dmp dumpfile=glmt.dmp schemas=FJCTCMS_GLMT REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_GLMT_DATA 
+
+impdp FJCTCMS_WZSY/fjctcms directory=dmp dumpfile=wzsy.dmp schemas=FJCTCMS_WZSY REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_WZSY_DATA 
+
+impdp FJCTCMS_GWJT/fjctcms directory=dmp dumpfile=gwjt.dmp schemas=FJCTCMS_GWJT REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_GWJT_DATA 
+
+impdp FJCTCMS/fjctcms directory=dmp dumpfile=fjctcms.dmp 
+schemas=FJCTCMS REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_DATA 
+
+impdp FJCTCMS_TEST/fjctcms  directory=dmp dumpfile=test.dmp   schemas=FJCTCMS_TEST REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_DATA 
+
+impdp FJCTCMS_TEST1/fjctcms  directory=dmp dumpfile=test1.dmp   schemas=FJCTCMS_TEST1 REMAP_TABLESPACE=FJCTCMS_DATA:FJCTCMS_DATA 
