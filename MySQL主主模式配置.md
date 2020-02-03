@@ -425,4 +425,22 @@ show slave status \G
 ```
 
 一切正常。
+**问题4：Can't connect to local MySQL server through socket '/usr/local/mysql/mysql.sock' (XXX)**
+```bash
+/etc/init.d/mysqld start 
+```
+**问题5： Operation CREATE USER failed for 'test'@'xx.xx.xx.xx'**
+```bash
+查看是不是存在这个用户
+select user from user;
+发现没有这个用户。
+记得上次有删除过这个用户。可能没有刷新权限
+flush privileges;
+之后还是不行报错ERROR 1396 (HY000): Operation CREATE USER failed for ‘test’@’%’
+没办法再删除一次：
+drop user ‘test’@’%’;
+flush privileges;
+之后create user ‘test’@’%’ identified by ‘test’;
+```
+
 
